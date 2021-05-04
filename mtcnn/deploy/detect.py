@@ -53,8 +53,9 @@ class FaceDetector(object):
         return img
 
     def detect(self, img, threshold=[0.6, 0.7, 0.85], factor=0.7, minsize=12, nms_threshold=[0.7, 0.7, 0.3]):
+        if not isinstance(img, torch.Tensor):
+            img = self._preprocess(img)
 
-        img = self._preprocess(img)
         stage_one_boxes = self.stage_one(img, threshold[0], factor, minsize, nms_threshold[0])
         stage_two_boxes = self.stage_two(img, stage_one_boxes, threshold[1], nms_threshold[1])
         stage_three_boxes, landmarks = self.stage_three(

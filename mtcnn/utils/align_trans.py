@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-
+from skimage.transform import SimilarityTransform
 from mtcnn.utils.cp2tform import get_similarity_transform_for_cv2
 
 # reference facial points, a list of coordinates (x,y)
@@ -30,9 +30,9 @@ def get_reference_facial_points(output_size=None,
     ----------
         get reference 5 key points according to crop settings:
         0. Set default crop_size:
-            if default_square: 
+            if default_square:
                 crop_size = (112, 112)
-            else: 
+            else:
                 crop_size = (96, 112)
         1. Pad the crop_size by inner_padding_factor in each side;
         2. Resize crop_size into (output_size - outer_padding*2),
@@ -52,7 +52,7 @@ def get_reference_facial_points(output_size=None,
             else:
                 default crop_size = (96, 112);
         !!! make sure, if output_size is not None:
-                (output_size - outer_padding) 
+                (output_size - outer_padding)
                 = some_scale * (default crop_size * (1.0 + inner_padding_factor))
     Returns:
     ----------
@@ -199,19 +199,46 @@ def get_affine_transform_matrix(src_pts, dst_pts):
     return tfm
 
 
-def warp_and_crop_face(src_img,
-                       facial_pts,
-                       reference_pts=None,
-                       crop_size=(96, 112),
-                       align_type='smilarity'):
+def get_reference_points(output_size=(112,112)):
+    '''
+    Get adjusted reference points
+    Args:
+        output_size: (2,) tuple
+            output size for face image
+
+    Returns:
+        ref_pts: (5,2) np.array
+            5 x [x,y] ref points
+    '''
+
+    ref_pts = np.array(REFERENCE_FACIAL_POINTS)
+    ref_size = np.array(DEFAULT_CROP_SIZE)
+
+    scale = output_size[1]/ref_size[1]
+    tmp_pts = ref_pts * scale
+    tmp_size = ref_size * scale
+
+    size_diff = output_size - tmp_size
+    tmp_pts += size_diff / 2
+    tmp_size += size_diff
+    assert all(tmp_size == output_size)
+
+    return tmp_pts
+
+def warp_and_crop_face(*args, **kwargs):
+    pass
+
+
+def get_transform_matrix(facial_pts,
+                      reference_pts=None,
+                      crop_size=(112, 112),
+                      align_type='similarity'):
     """
     Function:
     ----------
-        apply affine transform 'trans' to uv
+        get affine transform matrix 'trans' to uv
     Parameters:
     ----------
-        @src_img: 3x3 np.array
-            input image
         @facial_pts: could be
             1)a list of K coordinates (x,y)
         or
@@ -234,22 +261,11 @@ def warp_and_crop_face(src_img,
             3) 'affine': use all points to do affine transform
     Returns:
     ----------
-        @face_img: output face image with size (w, h) = @crop_size
+        @tfm: transform matrix [2x3] for affine transformation
     """
 
     if reference_pts is None:
-        if crop_size[0] == 96 and crop_size[1] == 112:
-            reference_pts = REFERENCE_FACIAL_POINTS
-        else:
-            default_square = False
-            inner_padding_factor = 0
-            outer_padding = (0, 0)
-            output_size = crop_size
-
-            reference_pts = get_reference_facial_points(output_size,
-                                                        inner_padding_factor,
-                                                        outer_padding,
-                                                        default_square)
+        reference_pts = get_reference_points(output_size=crop_size)
 
     ref_pts = np.float32(reference_pts)
     ref_pts_shp = ref_pts.shape
@@ -276,21 +292,17 @@ def warp_and_crop_face(src_img,
         raise FaceWarpException(
             'facial_pts and reference_pts must have the same shape')
 
-    if align_type is 'cv2_affine':
+    if align_type is 'cv2_affine': # 3 points
         tfm = cv2.getAffineTransform(src_pts[0:3], ref_pts[0:3])
 #        #print(('cv2.getAffineTransform() returns tfm=\n' + str(tfm))
     elif align_type is 'affine':
         tfm = get_affine_transform_matrix(src_pts, ref_pts)
 #        #print(('get_affine_transform_matrix() returns tfm=\n' + str(tfm))
+    elif align_type is 'similarity': # all points
+        tform = SimilarityTransform()
+        tform.estimate(src_pts, ref_pts)
+        tfm = tform.params[0:2, :]
     else:
         tfm = get_similarity_transform_for_cv2(src_pts, ref_pts)
-#        #print(('get_similarity_transform_for_cv2() returns tfm=\n' + str(tfm))
 
-#    #print('--->Transform matrix: '
-#    #print(('type(tfm):' + str(type(tfm)))
-#    #print(('tfm.dtype:' + str(tfm.dtype))
-#    #print( tfm
-
-    face_img = cv2.warpAffine(src_img, tfm, (crop_size[0], crop_size[1]))
-
-    return face_img
+    return tfm

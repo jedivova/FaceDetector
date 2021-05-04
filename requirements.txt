@@ -1,0 +1,10 @@
+git+https://github.com/nizhib/pytorch-insightface
+torchgeometry
+scikit-image
+opencv-python
+easydict
+numpy
+Cython
+progressbar2
+torch
+tensorboardX
